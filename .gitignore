@@ -1,0 +1,19 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+uv.lock
+build/
+dist/
+wheels/
+*.egg-info
+03/
+04/
+calib_cam_to_cam/
+data_scene_flow/
+poses/
+
+
+
+
+# Virtual environments
+.venv
