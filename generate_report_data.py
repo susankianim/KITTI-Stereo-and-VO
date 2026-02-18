@@ -40,7 +40,7 @@ def generate_stereo_examples():
 
 def generate_vo_results():
     print("\n--- Generating VO Results for 2 Sequences ---")
-    sequences = ['01', '03']
+    sequences = ['03', '04']
     output_dir = 'output/report/vo'
     os.makedirs(output_dir, exist_ok=True)
     

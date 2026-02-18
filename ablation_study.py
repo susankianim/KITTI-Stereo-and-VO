@@ -17,7 +17,7 @@ def run_stereo_ablation():
     os.makedirs(output_dir, exist_ok=True)
 
     window_sizes = [7, 15]
-    methods = ['SAD', 'SSD']
+    methods = ['SAD', 'SSD', 'NCC']
     indices = [0, 5, 10, 15, 20] # 5 samples for ablation
 
     results = []
