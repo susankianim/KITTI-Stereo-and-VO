@@ -17,7 +17,7 @@ def run_phase1():
     os.makedirs(output_dir, exist_ok=True)
 
     # Parameters
-    window_size = 15
+    window_size = 7
     max_disp = 128
     methods = ['SAD', 'SSD', 'NCC']
     # Process all available images (0-20)

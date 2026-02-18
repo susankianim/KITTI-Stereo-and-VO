@@ -42,14 +42,15 @@ The focal length $f$ and baseline $B$ are extracted from the KITTI `calib.txt` o
 ## 3. Evaluation Results
 
 ### 3.1 Stereo Depth (Phase 1)
-Results averaged over 21 samples:
+Results averaged over 20 samples:
 | Method | Window Size | Bad-pixel Rate (>3px) | MAE (px) |
 | :--- | :--- | :--- | :--- |
-| **SSD** | 15 | 23.58% | 4.85 |
-| **SAD** | 15 | 24.85% | 5.20 |
-| **NCC** | 15 | 13.40% | 2.53 |
+| **SSD** | 15 | 22.01% | 4.88 |
+| **SAD** | 15 | 23.24% | 5.16 |
+| **NCC** | 15 | 13.05% | 2.50 |
 | **SSD** | 7 | 34.44% | 7.36 |
-| **SAD** | 7 | 36.21% | 7.72 |
+| **SAD** | 7 | 31.53% | 6.74 |
+| **NCC** | 7 | 17.80% | 3.58 |
 
 ### 3.2 Visual Odometry (Phase 2)
 Results on Sequence 00 (first 50 frames):
