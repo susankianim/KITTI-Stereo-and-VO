@@ -6,11 +6,8 @@ build/
 dist/
 wheels/
 *.egg-info
-03/
-04/
-calib_cam_to_cam/
-data_scene_flow/
-poses/
+stereo_data/
+vo_data/
 
 
 

@@ -53,10 +53,10 @@ Results averaged over 20 samples:
 | **NCC** | 7 | 17.80% | 3.58 |
 
 ### 3.2 Visual Odometry (Phase 2)
-Results on Sequence 00 (first 50 frames):
+Results on Sequence 04 (first 50 frames):
 | Configuration | ATE (m) |
 | :--- | :--- |
-| **Full (RANSAC + Stereo Scale)** | 0.9461 |
+| **Full (RANSAC + Stereo Scale)** | 10.7349 |
 | **Monocular (Unit Scale)** | 1.4028 |
 | **No RANSAC** | 189.14 |
 

@@ -51,6 +51,43 @@ class VisualOdometry:
             
         return np.array(pts_3d, dtype=np.float32), valid_idx
 
+    def _get_3d_points_feature_matching(self, img_l, img_r, kps):
+        """
+        Compute 3D points for given keypoints in img_l using feature matching in the right image.
+        """
+        # 1. Describe the keypoints in the left image
+        _, des_l = self.orb.compute(img_l, kps)
+        # 2. Detect and describe keypoints in the right image
+        kp_r, des_r = self.orb.detectAndCompute(img_r, None)
+
+        if des_l is None or des_r is None:
+            return np.array([], dtype=np.float32), []
+
+        # 3. Match features between left and right images
+        matches = self.bf.match(des_l, des_r)
+
+        pts_3d = []
+        valid_idx = []
+        for m in matches:
+            idx_l = m.queryIdx  # Index in the original 'kps' list
+            idx_r = m.trainIdx  # Index in the detected 'kp_r' list
+            
+            pt_l = kps[idx_l].pt
+            pt_r = kp_r[idx_r].pt
+            
+            # Use Epipolar Constraint: v-coordinates should be nearly identical in rectified images
+            if abs(pt_l[1] - pt_r[1]) < 2.0:
+                # Disparity d = u_left - u_right
+                disp = pt_l[0] - pt_r[0]
+                if disp > 0:
+                    z = (self.fx * self.baseline) / disp
+                    x = (pt_l[0] - self.cx) * z / self.fx
+                    y = (pt_l[1] - self.cy) * z / self.fx
+                    pts_3d.append([x, y, z])
+                    valid_idx.append(idx_l)
+                    
+        return np.array(pts_3d, dtype=np.float32), valid_idx
+
     def process_frame(self, img_l, img_r, use_ransac=True, use_stereo_scale=True):
         """
         Process a new stereo frame and update current pose.
@@ -70,7 +107,8 @@ class VisualOdometry:
         prev_pts_objs = [self.prev_kp[m.queryIdx] for m in matches] # type: ignore
         curr_pts = np.array([kp_l[m.trainIdx].pt for m in matches], dtype=np.float32)
         
-        pts_3d_prev, valid_idx = self._get_3d_points(self.prev_img_l, self.prev_img_r, prev_pts_objs)
+        # pts_3d_prev, valid_idx = self._get_3d_points(self.prev_img_l, self.prev_img_r, prev_pts_objs)
+        pts_3d_prev, valid_idx = self._get_3d_points_feature_matching(self.prev_img_l, self.prev_img_r, prev_pts_objs)
         curr_pts_valid = curr_pts[valid_idx]
         matches_valid = [matches[i] for i in valid_idx]
         

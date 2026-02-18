@@ -191,7 +191,7 @@ class StereoMatcher:
         
         return filled
 
-    def fill_holes_nearest(self, disp, invalid_val=0):
+    def _fill_holes_nearest(self, disp, invalid_val=0):
         h, w = disp.shape
         filled = disp.copy()
         valid = disp > invalid_val
