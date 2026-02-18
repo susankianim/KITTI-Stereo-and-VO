@@ -21,7 +21,7 @@ def run_phase1():
     max_disp = 128
     methods = ['SAD', 'SSD', 'NCC']
     # Process all available images (0-20)
-    indices = list(range(10))
+    indices = list(range(20))
 
     matcher = StereoMatcher(window_size=window_size, max_disp=max_disp)
 
