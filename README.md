@@ -30,6 +30,11 @@ To run the standard evaluation on both stereo depth and visual odometry:
 ```bash
 uv run main.py
 ```
+To run visual odometry with more results:
+```bash
+uv run main_vo.py
+```
+
 
 ### Ablation Studies
 To reproduce the ablation study results (different matching costs, window sizes, RANSAC impact):
