@@ -21,7 +21,7 @@ def run_phase1():
     max_disp = 128
     methods = ['SAD', 'SSD', 'NCC']
     # Process all available images (0-20)
-    indices = list(range(21))
+    indices = list(range(10))
 
     matcher = StereoMatcher(window_size=window_size, max_disp=max_disp)
 
@@ -74,8 +74,8 @@ def run_phase1():
 
 def run_phase2():
     print("\n=== Phase 2: Stereo Visual Odometry ===")
-    sequence_dir = '00'
-    poses_path = 'poses/00.txt'
+    sequence_dir = '04'
+    poses_path = 'poses/04.txt'
     output_dir = 'output/vo'
     os.makedirs(output_dir, exist_ok=True)
 
