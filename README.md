@@ -21,8 +21,7 @@ uv sync
 - `opencv-python`
 - `matplotlib`
 - `tqdm`
-- `scipy`
-- `pillow`
+
 
 ## Running the Project
 
