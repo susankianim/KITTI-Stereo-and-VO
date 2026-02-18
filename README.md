@@ -8,7 +8,7 @@ Ensure you have [uv](https://github.com/astral-sh/uv) installed.
 
 ```bash
 # Clone the repository
-git clone <repo-url>
+git clone https://github.com/susankianim/KITTI-Stereo-and-VO
 cd code
 
 # Create virtual environment and install dependencies
