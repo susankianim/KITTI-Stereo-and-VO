@@ -90,28 +90,33 @@ def main():
         settings[key].append(res)
 
     avg_results = []
-    worst_samples = []
-
+    
+    # 1. Compute averages for all settings
     for (method, ws), res_list in settings.items():
         bprs = [r['bpr'] for r in res_list]
         maes = [r['mae'] for r in res_list]
-        
         avg_results.append({
             'method': method,
             'ws': ws,
             'avg_bpr': np.mean(bprs),
             'avg_mae': np.mean(maes)
         })
-        
-        # Find worst (max BPR)
-        worst = max(res_list, key=lambda x: x['bpr'])
-        worst_samples.append({
-            'method': method,
-            'ws': ws,
-            'worst_idx': worst['idx'],
-            'worst_bpr': worst['bpr'],
-            'worst_mae': worst['mae']
-        })
+
+    # 2. Find top 10 worst samples specifically for NCC with window size 15
+    worst_samples = []
+    ncc_15_res = settings.get(('NCC', 15), [])
+    if ncc_15_res:
+        # Sort by BPR descending and take top 10
+        ncc_15_sorted = sorted(ncc_15_res, key=lambda x: x['bpr'], reverse=True)
+        top_10_worst = ncc_15_sorted[:10]
+        for r in top_10_worst:
+            worst_samples.append({
+                'method': 'NCC',
+                'ws': 15,
+                'idx': r['idx'],
+                'bpr': r['bpr'],
+                'mae': r['mae']
+            })
 
     # Save Average Results
     with open(avg_csv_path, mode='w', newline='') as f:
@@ -119,29 +124,29 @@ def main():
         writer.writeheader()
         writer.writerows(avg_results)
 
-    # Save Worst Samples
+    # Save Worst Samples (Top 10 NCC 15)
     with open(worst_csv_path, mode='w', newline='') as f:
-        writer = csv.DictWriter(f, fieldnames=['method', 'ws', 'worst_idx', 'worst_bpr', 'worst_mae'])
+        writer = csv.DictWriter(f, fieldnames=['method', 'ws', 'idx', 'bpr', 'mae'])
         writer.writeheader()
         writer.writerows(worst_samples)
 
     print(f"\nEvaluation complete.")
     print(f"All Results: {full_csv_path}")
     print(f"Averages: {avg_csv_path}")
-    print(f"Worst Samples: {worst_csv_path}")
+    print(f"Worst NCC 15 Samples: {worst_csv_path}")
     
     # Print Average Summary Table
     print("\n--- Average Results Table ---")
     print(f"{'Method':<10} | {'WS':<5} | {'Avg BPR (%)':<12} | {'Avg MAE (px)':<12}")
-    print("-" * 50)
+    print("-" * 55)
     for r in avg_results:
         print(f"{r['method']:<10} | {r['ws']:<5} | {r['avg_bpr']:<12.2f} | {r['avg_mae']:<12.2f}")
 
-    print("\n--- Worst Samples Table ---")
-    print(f"{'Method':<10} | {'WS':<5} | {'Idx':<5} | {'BPR (%)':<10} | {'MAE (px)':<10}")
-    print("-" * 50)
+    print("\n--- Top 10 Worst NCC 15 Samples ---")
+    print(f"{'Idx':<10} | {'BPR (%)':<10} | {'MAE (px)':<10}")
+    print("-" * 35)
     for r in worst_samples:
-        print(f"{r['method']:<10} | {r['ws']:<5} | {r['worst_idx']:<5} | {r['worst_bpr']:<10.2f} | {r['worst_mae']:<10.2f}")
+        print(f"{r['idx']:<10} | {r['bpr']:<10.2f} | {r['mae']:<10.2f}")
 
 def save_visualization(img_color, disp, gt, depth, idx, method, ws, output_dir):
     plt.figure(figsize=(15, 10))
