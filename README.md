@@ -1,56 +1,65 @@
 # KITTI Stereo Depth and Visual Odometry
 
-This project implements a complete pipeline for dense depth estimation from stereo images and the recovery of camera trajectory using Visual Odometry (VO) on the KITTI dataset.
+This project implements a complete pipeline for stereo depth estimation and Visual Odometry (VO) using the KITTI dataset. It features dense disparity estimation with multiple cost functions and a feature-based VO system with metric scale recovery.
+
+## Features
+
+### 1. Stereo Depth Estimation
+- **Matching Costs**: Implementation of SAD, SSD, and NCC.
+- **Support**: Variable window sizes for block matching.
+- **Post-processing**: Left-Right consistency check and hole filling.
+- **Evaluation**: Bad Pixel Rate (BPR) and Mean Absolute Error (MAE) metrics.
+
+### 2. Visual Odometry
+- **Feature Pipeline**: ORB feature extraction and matching.
+- **Pose Estimation**: Robust 3D-2D PnP trajectory estimation using RANSAC.
+- **Modes**: Support for full metric scale (stereo-based) and monocular scale modes.
+- **Analysis**: Full ablation studies on RANSAC impact and stereo vs. monocular scale.
 
 ## Installation
 
-Ensure you have [uv](https://github.com/astral-sh/uv) installed.
+Ensure you have [uv](https://github.com/astral-sh/uv) or a standard Python environment installed.
 
 ```bash
 # Clone the repository
 git clone https://github.com/susankianim/KITTI-Stereo-and-VO
-cd code
+cd KITTI-Stereo-and-VO
 
-# Create virtual environment and install dependencies
+# Using uv (recommended)
 uv venv
 uv sync
+
+# Using pip (if requirements.txt exists)
+# pip install -r requirements.txt
 ```
-
-## Dependencies
-- `numpy`
-- `opencv-python`
-- `matplotlib`
-- `tqdm`
-
 
 ## Running the Project
 
-### Full Pipeline
-To run the standard evaluation on both stereo depth and visual odometry:
+### Stereo Evaluation
+To run the stereo depth estimation pipeline and generate ablation results:
 ```bash
-uv run main.py
+python run_stereo.py
 ```
-To run visual odometry with more results:
-```bash
-uv run main_vo.py
-```
+This script evaluates different matching costs and window sizes, saving results to `stereo_results/`.
 
-
-### Ablation Studies
-To reproduce the ablation study results (different matching costs, window sizes, RANSAC impact):
+### Visual Odometry
+To run the VO pipeline across multiple sequences:
 ```bash
-uv run ablation_study.py
+python run_vo.py
 ```
-
-### Report Data Generation
-To regenerate the 10+ disparity examples and trajectory plots used in the report:
-```bash
-uv run generate_report_data.py
-```
+This script processes sequences (defaulting to Seq 03), evaluates cases (Full, No RANSAC, No Stereo Scale), and saves plots to `vo_results/`.
 
 ## Project Structure
-- `stereo_matcher.py`: Implementation of block matching (SAD, SSD, NCC), L-R consistency, and post-processing.
-- `visual_odometry.py`: ORB-based feature matching, 3D-2D PnP pose estimation, and metric scale recovery.
-- `utils.py`: Data loaders for KITTI labels, calibrations, and evaluation metrics (BPR, MAE, ATE, RPE).
-- `main.py`: Main execution script.
-- `output/`: Contains all generated visualizations and results.
+- `run_stereo.py`: Main entry point for depth estimation and stereo ablation studies.
+- `run_vo.py`: Main entry point for visual odometry evaluation and trajectory plotting.
+- `stereo_matcher.py`: Core logic for dense block matching and disparity calculation.
+- `visual_odometry.py`: Dense-disparity-based VO implementation.
+- `visual_odometry_feature.py`: Feature-based VO implementation (adapted for RANSAC and speed).
+- `utils.py`: Data loaders, calibration parsing, and evaluation metric implementations (ATE, RPE, BPR).
+- `REPORT.md`: Detailed technical report with results, diagrams, and failure analysis.
+
+## Results
+- **Stereo Results**: Disparity maps and metrics are stored in `stereo_results/`.
+- **VO Results**: Trajectory plots and metric CSVs are stored in `vo_results/`.
+
+For a full breakdown of the results and failure cases, please refer to [REPORT.md](REPORT.md).
