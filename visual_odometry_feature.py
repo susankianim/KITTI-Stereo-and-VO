@@ -2,7 +2,7 @@ import numpy as np
 import cv2
 from stereo_matcher import StereoMatcher
 
-class VisualOdometry:
+class VisualOdometryFeature:
     def __init__(self, P0, P1, window_size=7, max_disp=128):
         self.P0 = P0
         self.P1 = P1
@@ -13,43 +13,12 @@ class VisualOdometry:
         
         self.orb = cv2.ORB_create(3000) # type: ignore
         self.bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
-        self.matcher = StereoMatcher(window_size=window_size, max_disp=max_disp)
         
         self.current_pose = np.eye(4)
         self.prev_img_l = None
         self.prev_kp = None
         self.prev_des = None
         self.prev_3d = None
-
-    def _get_3d_points(self, img_l, img_r, kps):
-        """
-        Compute 3D points for given keypoints in img_l using stereo matching.
-        """
-        disp_l = self.matcher.compute_disparity(img_l, img_r, method='SSD')
-        disp_l = self.matcher.post_process(disp_l)
-        
-        pts_3d = []
-        valid_idx = []
-        
-        for i, kp in enumerate(kps):
-            u, v = int(kp.pt[0]), int(kp.pt[1])
-            if v >= disp_l.shape[0] or u >= disp_l.shape[1]:
-                continue
-                
-            d = disp_l[v, u]
-            if d <= 0:
-                continue
-                
-            # Z = f * B / d
-            z = (self.fx * self.baseline) / d
-            # Metric scale: X = (u - cx) * Z / f, Y = (v - cy) * Z / f
-            x = (u - self.cx) * z / self.fx
-            y = (v - self.cy) * z / self.fx
-            
-            pts_3d.append([x, y, z])
-            valid_idx.append(i)
-            
-        return np.array(pts_3d, dtype=np.float32), valid_idx
 
     def _get_disparity(self, img_l, img_r, kps_l, des_l):
         """Matches features between left and right image to get sparsity at time t."""
@@ -106,22 +75,24 @@ class VisualOdometry:
         kp_l, des_l = self.orb.detectAndCompute(img_l, None)
         
         if self.prev_img_l is None:
+            # Re-triangulate for the first frame
+            pts_3d, valid_idx = self._get_3d_points_feature_matching(img_l, img_r, kp_l)
+            
             self.prev_img_l = img_l
-            self.prev_kp = kp_l
-            self.prev_des = des_l
+            self.prev_kp = [kp_l[i] for i in valid_idx]
+            self.prev_des = des_l[valid_idx]
+            self.prev_3d = pts_3d
             return self.current_pose, None
 
+        # Temporal matching (Previous Left to Current Left)
         matches = self.bf.match(self.prev_des, des_l) # type: ignore
-        matches = sorted(matches, key=lambda x: x.distance)
         
-        prev_pts_objs = [self.prev_kp[m.queryIdx] for m in matches] # type: ignore
-        curr_pts = np.array([kp_l[m.trainIdx].pt for m in matches], dtype=np.float32)
-        prev_pts = np.array([self.prev_kp[m.queryIdx].pt for m in matches], dtype=np.float32)
+        idx_prev = [m.queryIdx for m in matches]
+        idx_curr = [m.trainIdx for m in matches]
         
-        pts_3d_prev, valid_idx = self._get_3d_points(self.prev_img_l, img_r, prev_pts_objs)
-        curr_pts_valid = curr_pts[valid_idx]
-        prev_pts_valid = prev_pts[valid_idx]
-        matches_valid = [matches[i] for i in valid_idx]
+        pts_3d_prev = self.prev_3d[idx_prev]
+        pts_2d_curr = np.array([kp_l[i].pt for i in idx_curr], dtype=np.float32)
+        pts_2d_prev = np.array([self.prev_kp[i].pt for i in idx_prev], dtype=np.float32)
         
         if len(pts_3d_prev) < 10:
             return self.current_pose, None
@@ -133,32 +104,32 @@ class VisualOdometry:
         inlier_mask = None
         
         if use_ransac:
-            # Added Essential Matrix filter for better performance
-            E, e_mask = cv2.findEssentialMat(prev_pts_valid, curr_pts_valid, K, method=cv2.RANSAC, prob=0.999, threshold=1.0)
+            # Step 1: Essential Matrix to filter matching outliers
+            E, e_mask = cv2.findEssentialMat(pts_2d_prev, pts_2d_curr, K, method=cv2.RANSAC, prob=0.999, threshold=1.0)
             
             if e_mask is not None:
                 inliers_idx = np.where(e_mask.ravel() == 1)[0]
                 pts_3d_filt = pts_3d_prev[inliers_idx]
-                pts_2d_filt = curr_pts_valid[inliers_idx]
+                pts_2d_filt = pts_2d_curr[inliers_idx]
             else:
-                pts_3d_filt, pts_2d_filt, inliers_idx = pts_3d_prev, curr_pts_valid, np.arange(len(pts_3d_prev))
+                pts_3d_filt, pts_2d_filt, inliers_idx = pts_3d_prev, pts_2d_curr, np.arange(len(pts_3d_prev))
 
+            # Step 2: solvePnPRansac for robust pose
             success, rvec, tvec, inliers_pnp = cv2.solvePnPRansac(
                 pts_3d_filt, pts_2d_filt, K, dist_coeffs, 
-                flags=cv2.SOLVEPNP_ITERATIVE, confidence=0.999, reprojectionError=1.0 # Reduced error threshold
+                flags=cv2.SOLVEPNP_ITERATIVE, confidence=0.999, reprojectionError=1.0
             )
             if success and inliers_pnp is not None:
                 inlier_mask = inliers_idx[inliers_pnp.flatten()]
         else:
             success, rvec, tvec = cv2.solvePnP(
-                pts_3d_prev, curr_pts_valid, K, dist_coeffs, flags=cv2.SOLVEPNP_ITERATIVE # type: ignore
+                pts_3d_prev, pts_2d_curr, K, dist_coeffs, flags=cv2.SOLVEPNP_ITERATIVE # type: ignore
             )
             inlier_mask = np.arange(len(pts_3d_prev))
         
         if success:
             R, _ = cv2.Rodrigues(rvec)
             if not use_stereo_scale:
-                # Normalize translation if not using stereo scale (monocular unit scale)
                 norm = np.linalg.norm(tvec)
                 if norm > 0:
                     tvec = tvec / norm
@@ -169,18 +140,22 @@ class VisualOdometry:
             
             # Update world pose
             self.current_pose = self.current_pose @ np.linalg.inv(T_rel)
+            
+            # Re-triangulate for next frame
+            pts_3d_curr, valid_idx = self._get_3d_points_feature_matching(img_l, img_r, kp_l)
+            
+            self.prev_3d = pts_3d_curr
+            self.prev_kp = [kp_l[i] for i in valid_idx]
+            self.prev_des = des_l[valid_idx]
+            self.prev_img_l = img_l
         
         debug_info = {
-            'matches': matches_valid,
+            'matches': matches,
             'prev_kp': self.prev_kp,
             'curr_kp': kp_l,
             'inliers': inlier_mask,
             'prev_img': self.prev_img_l,
             'curr_img': img_l
         }
-
-        self.prev_img_l = img_l
-        self.prev_kp = kp_l
-        self.prev_des = des_l
         
         return self.current_pose, debug_info

@@ -9,7 +9,7 @@ from utils import load_vo_calib, load_poses, compute_ate, compute_rpe
 
 def main():
     # --- Configuration ---
-    sequences = ['03', '04']
+    sequences = ['00', '01', '02', '03', '04', '05', '06', '07', '08', '09', '10']  # Example sequences to process
     vo_data_root = 'vo_data'
     output_dir = 'vo_results'
     csv_path = os.path.join(output_dir, 'vo_results.csv')
