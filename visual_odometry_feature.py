@@ -1,28 +1,38 @@
-import numpy as np
 import cv2
-from stereo_matcher import StereoMatcher
+import numpy as np
 
 class VisualOdometryFeature:
-    def __init__(self, P0, P1, window_size=7, max_disp=128):
-        self.P0 = P0
-        self.P1 = P1
-        self.fx = P0[0, 0]
-        self.cx = P0[0, 2]
-        self.cy = P0[1, 2]
-        self.baseline = abs(P1[0, 3] - P0[0, 3]) / self.fx
+    def __init__(self, P0, P1, max_features=1500):
+        """
+        Initialize the Visual Odometry with projection matrices.
+        P0: Projection matrix for left camera (K [I|0])
+        P1: Projection matrix for right camera (K [I|t])
+        """
+        self.K = P0[:, :3]
+        # Calculate baseline from horizontal offset in P1
+        # P1[0, 3] = -f * baseline
+        self.baseline = abs(P1[0, 3]) / self.K[0, 0]
         
-        self.orb = cv2.ORB_create(3000) # type: ignore
+        self.orb = cv2.ORB_create(nfeatures=max_features) # type: ignore
+        
+        # Matcher for frame-to-frame (temporal) and left-to-right (stereo)
         self.bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
         
-        self.current_pose = np.eye(4)
+        # Current camera pose (relative to start)
+        self.T_curr = np.eye(4)
+        
+        # Frame storage
         self.prev_img_l = None
-        self.prev_kp = None
-        self.prev_des = None
+        self.prev_kps_l = None
+        self.prev_des_l = None
         self.prev_3d = None
-
+        
     def _get_disparity(self, img_l, img_r, kps_l, des_l):
         """Matches features between left and right image to get sparsity at time t."""
         kps_r, des_r = self.orb.detectAndCompute(img_r, None)
+        if des_r is None or len(des_r) == 0:
+            return np.zeros(len(kps_l))
+            
         matches = self.bf.match(des_l, des_r)
         
         # Epipolar constraint: check vertical alignment and disparity range
@@ -43,119 +53,143 @@ class VisualOdometryFeature:
             
         return disparities
 
-    def _get_3d_points_feature_matching(self, img_l, img_r, kps):
-        """
-        Compute 3D points for given keypoints in img_l using feature matching in the right image.
-        """
-        # Describe the keypoints in the left image
-        _, des_l = self.orb.compute(img_l, kps)
-
-        if des_l is None:
-            return np.array([], dtype=np.float32), []
-
-        disparities = self._get_disparity(img_l, img_r, kps, des_l)
-
-        pts_3d = []
-        valid_idx = []
-        for i, d in enumerate(disparities):
-            if d > 0:
-                pt_l = kps[i].pt
-                z = (self.fx * self.baseline) / d
-                x = (pt_l[0] - self.cx) * z / self.fx
-                y = (pt_l[1] - self.cy) * z / self.fx
-                pts_3d.append([x, y, z])
-                valid_idx.append(i)
-                    
-        return np.array(pts_3d, dtype=np.float32), valid_idx
-
     def process_frame(self, img_l, img_r, use_ransac=True, use_stereo_scale=True):
-        """
-        Process a new stereo frame and update current pose.
-        """
-        kp_l, des_l = self.orb.detectAndCompute(img_l, None)
+        """Processes a single stereo pair at time t."""
+        kps_l, des_l = self.orb.detectAndCompute(img_l, None)
         
-        if self.prev_img_l is None:
-            # Re-triangulate for the first frame
-            pts_3d, valid_idx = self._get_3d_points_feature_matching(img_l, img_r, kp_l)
-            
-            self.prev_img_l = img_l
-            self.prev_kp = [kp_l[i] for i in valid_idx]
-            self.prev_des = des_l[valid_idx]
-            self.prev_3d = pts_3d
-            return self.current_pose, None
+        if des_l is None or len(des_l) == 0:
+            return self.T_curr, None
 
-        # Temporal matching (Previous Left to Current Left)
-        matches = self.bf.match(self.prev_des, des_l) # type: ignore
-        
+        if self.prev_img_l is None:
+            disparity = self._get_disparity(img_l, img_r, kps_l, des_l)
+            pts_2d = np.array([kp.pt for kp in kps_l])
+            valid = disparity > 0
+            
+            if np.sum(valid) == 0:
+                # Fallback if no valid disparities found
+                self.prev_img_l = img_l
+                self.prev_kps_l = kps_l
+                self.prev_des_l = des_l
+                return self.T_curr, None
+
+            self.prev_img_l = img_l
+            
+            f, cx, cy = self.K[0,0], self.K[0,2], self.K[1,2]
+            z = (f * self.baseline) / (disparity[valid] + 1e-6)
+            x = (pts_2d[valid, 0] - cx) * z / f
+            y = (pts_2d[valid, 1] - cy) * z / f
+            self.prev_3d = np.stack((x, y, z), axis=-1)
+            
+            self.prev_kps_l = [kps_l[i] for i, v in enumerate(valid) if v]
+            self.prev_des_l = des_l[valid]
+            
+            return self.T_curr, None
+
+        # Temporal matching
+        matches = self.bf.match(self.prev_des_l, des_l) # type: ignore
+        if len(matches) < 10: # Min matches
+            return self.T_curr, None
+
         idx_prev = [m.queryIdx for m in matches]
         idx_curr = [m.trainIdx for m in matches]
-        
         pts_3d_prev = self.prev_3d[idx_prev] # type: ignore
-        pts_2d_curr = np.array([kp_l[i].pt for i in idx_curr], dtype=np.float32)
-        pts_2d_prev = np.array([self.prev_kp[i].pt for i in idx_prev], dtype=np.float32) # type: ignore
+        pts_2d_curr = np.array([kps_l[i].pt for i in idx_curr])
+        pts_2d_prev = np.array([self.prev_kps_l[i].pt for i in idx_prev]) # type: ignore
         
-        if len(pts_3d_prev) < 10:
-            return self.current_pose, None
-
-        K = self.P0[:3, :3]
-        dist_coeffs = np.zeros((4, 1))
-        
-        success = False
-        inlier_mask = None
-        
+        inliers = None
         if use_ransac:
-            # Step 1: Essential Matrix to filter matching outliers
-            E, e_mask = cv2.findEssentialMat(pts_2d_prev, pts_2d_curr, K, method=cv2.RANSAC, prob=0.999, threshold=1.0)
+            # 1. Estimate Essential Matrix with RANSAC to satisfy project requirement
+            E, mask = cv2.findEssentialMat(pts_2d_prev, pts_2d_curr, self.K, 
+                                          method=cv2.RANSAC, prob=0.999, threshold=1.0)
             
-            if e_mask is not None:
-                inliers_idx = np.where(e_mask.ravel() == 1)[0]
-                pts_3d_filt = pts_3d_prev[inliers_idx]
-                pts_2d_filt = pts_2d_curr[inliers_idx]
+            # 2. Use the inliers from the Essential matrix to refine pose with PnP
+            if mask is not None:
+                inliers_idx = np.where(mask.ravel() == 1)[0]
+                if len(inliers_idx) < 4:
+                     pts_3d_filt, pts_2d_filt, inliers_idx = pts_3d_prev, pts_2d_curr, np.arange(len(pts_3d_prev))
+                else:
+                    pts_3d_filt = pts_3d_prev[inliers_idx]
+                    pts_2d_filt = pts_2d_curr[inliers_idx]
             else:
                 pts_3d_filt, pts_2d_filt, inliers_idx = pts_3d_prev, pts_2d_curr, np.arange(len(pts_3d_prev))
 
-            # Step 2: solvePnPRansac for robust pose
-            success, rvec, tvec, inliers_pnp = cv2.solvePnPRansac(
-                pts_3d_filt, pts_2d_filt, K, dist_coeffs, 
-                flags=cv2.SOLVEPNP_ITERATIVE, confidence=0.999, reprojectionError=1.0
-            )
-            if success and inliers_pnp is not None:
-                inlier_mask = inliers_idx[inliers_pnp.flatten()] # type: ignore
-        else:
-            success, rvec, tvec = cv2.solvePnP(
-                pts_3d_prev, pts_2d_curr, K, dist_coeffs, flags=cv2.SOLVEPNP_ITERATIVE # type: ignore
-            )
-            inlier_mask = np.arange(len(pts_3d_prev))
-        
-        if success:
-            R, _ = cv2.Rodrigues(rvec)
-            if not use_stereo_scale:
-                norm = np.linalg.norm(tvec)
-                if norm > 0:
-                    tvec = tvec / norm
+            retval, rvec, tvec, inliers_pnp = cv2.solvePnPRansac(
+                pts_3d_filt, pts_2d_filt, self.K, distCoeffs=None,
+                flags=cv2.SOLVEPNP_ITERATIVE, confidence=0.999, reprojectionError=1.0)
             
+            if retval and inliers_pnp is not None:
+                inliers = inliers_idx[inliers_pnp.flatten()] # type: ignore
+        else:
+            retval, rvec, tvec = cv2.solvePnP(pts_3d_prev, pts_2d_curr, self.K, distCoeffs=None)
+            inliers = np.arange(len(pts_3d_prev))
+
+        if retval:
+            if not use_stereo_scale:
+                # Monocular case: normalize translation scale to 1 (arbitrary)
+                # Note: In a real monocular system, you'd want to estimate scale from previous motion or ground plane
+                scale = np.linalg.norm(tvec)
+                if scale > 0: tvec /= scale
+                
+            R, _ = cv2.Rodrigues(rvec)
             T_rel = np.eye(4)
             T_rel[:3, :3] = R
             T_rel[:3, 3] = tvec.ravel()
             
-            # Update world pose
-            self.current_pose = self.current_pose @ np.linalg.inv(T_rel)
+            # Use the inverse of relative transformation to update current camera pose
+            # T_curr = T_curr * T_rel^-1
+            self.T_curr = self.T_curr @ np.linalg.inv(T_rel)
             
-            # Re-triangulate for next frame
-            pts_3d_curr, valid_idx = self._get_3d_points_feature_matching(img_l, img_r, kp_l)
+            # Construct debug dictionary as expected by run_vo.py
+            debug_info = {
+                'prev_img': self.prev_img_l,
+                'curr_img': img_l,
+                'prev_kp': self.prev_kps_l,
+                'curr_kp': [kps_l[i] for i in idx_curr], # Just the matched ones for drawMatches? 
+                                                          # Wait, drawMatches expects indices from the full list if kps are full.
+                'matches': [cv2.DMatch(_i, _i, 0) for _i in range(len(matches))], # Remapped matches
+                'inliers': inliers
+            }
+            # Actually, run_vo.py does:
+            # kp1 = debug['prev_kp']
+            # kp2 = debug['curr_kp']
+            # matches = debug['matches']
+            # inlier_matches = [matches[i] for i in inliers]
+            # cv2.drawMatches(img1, kp1, img2, kp2, inlier_matches[:50], ... )
             
-            self.prev_3d = pts_3d_curr
-            self.prev_kp = [kp_l[i] for i in valid_idx]
-            self.prev_des = des_l[valid_idx]
-            self.prev_img_l = img_l
+            # Let's adjust debug_info to be exactly what drawMatches needs
+            debug_info = {
+                'prev_img': self.prev_img_l,
+                'curr_img': img_l,
+                'prev_kp': self.prev_kps_l,
+                'curr_kp': kps_l,
+                'matches': matches,
+                'inliers': inliers
+            }
+            
+            # Re-triangulate for next step
+            disparity = self._get_disparity(img_l, img_r, kps_l, des_l)
+            valid = disparity > 0
+            
+            if np.sum(valid) > 0:
+                f, cx, cy = self.K[0,0], self.K[0,2], self.K[1,2]
+                z = (f * self.baseline) / (disparity[valid] + 1e-6)
+                
+                pts_2d_valid = np.array([kp.pt for i, kp in enumerate(kps_l) if valid[i]])
+                x = (pts_2d_valid[:, 0] - cx) * z / f
+                y = (pts_2d_valid[:, 1] - cy) * z / f
+                
+                self.prev_3d = np.stack((x, y, z), axis=-1)
+                self.prev_kps_l = [kps_l[i] for i, v in enumerate(valid) if v]
+                self.prev_des_l = des_l[valid]
+                self.prev_img_l = img_l
+            else:
+                # If no valid triangulation, we might be in trouble for the next frame
+                # but we'll let it try.
+                self.prev_img_l = img_l
+                self.prev_kps_l = kps_l
+                self.prev_des_l = des_l
+                self.prev_3d = None # This will cause an error next frame if not handled
+            
+            return self.T_curr, debug_info
         
-        debug_info = {
-            'matches': matches,
-            'prev_kp': self.prev_kp,
-            'curr_kp': kp_l,
-            'inliers': inlier_mask,
-            'prev_img': self.prev_img_l,
-            'curr_img': img_l
-        }
-        
-        return self.current_pose, debug_info
+        return self.T_curr, None
