@@ -114,12 +114,12 @@ Effect of components on metrics for Sequence 03:
 | **No RANSAC** | 8.42e11 | Catastrophic failure due to outliers |
 | **No Scale** | 96.95 | Loss of metric distance accuracy |
 
-- **RANSAC Analysis**: As shown in the comparison plots, "No RANSAC" (yellow dashed) often deviates immediately when the car turns or dynamic objects appear.
-- **Scale Analysis**: "No Stereo Scale" (blue) follows the path shape but "shrinks" or "stretches" the trajectory, illustrating the importance of stereo depth for scale recovery.
+- **RANSAC Analysis**: As shown in the comparison plots, "No RANSAC" often deviates immediately when the car turns or dynamic objects appear.
+- **Scale Analysis**: "No Stereo Scale" follows the path shape but "shrinks" or "stretches" the trajectory, illustrating the importance of stereo depth for scale recovery.
 
-| Seq 03 Ablation Comparison |
+| Seq 03 Ablation Comparison (No Scale vs No RANSAC) |
 | :---: |
-| ![Ablation 03](vo_results/trajectories/trajectory_03_No_Stereo_Scale.png) |
+| ![Ablation Scale](vo_results/trajectories/trajectory_03_No_Stereo_Scale.png) ![Ablation RANSAC](vo_results/trajectories/trajectory_03_No_RANSAC.png) |
 
 ## 5. Failure Cases
 
@@ -128,14 +128,16 @@ The 3 samples with the worst results (highest BPR):
 
 | Sample Index | Method | BPR (%) | MAE (px) | Image Sample |
 | :--- | :--- | :--- | :--- | :--- |
-| **104** | NCC-15 | 72.35 | 19.99 | ![Worst 104](stereo_results/stereo_idx104_NCC_ws15.png) |
-| **006** | NCC-15 | 27.41 | 4.18 | ![Worst 006](stereo_results/stereo_idx006_NCC_ws15.png) |
-| **058** | NCC-15 | 26.29 | 3.51 | ![Worst 058](stereo_results/stereo_idx058_NCC_ws15.png) |
+| **104** | NCC-15 | 72.35 | 19.99 | ![Worst 104](stereo_results/failue-results/stereo_idx104_NCC_ws15.png) |
+| **006** | NCC-15 | 27.41 | 4.18 | ![Worst 006](stereo_results/failue-results/stereo_idx006_NCC_ws15.png) |
+| **058** | NCC-15 | 26.29 | 3.51 | ![Worst 058](stereo_results/failue-results/stereo_idx058_NCC_ws15.png) |
 
-**Analysis**:
-- **Index 104**: Severe occlusion and lack of texture in the foreground road area, combined with distant objects exceeding the max disparity range.
-- **Index 006**: Strong specular reflections on car surfaces confuse the correlation matcher.
-- **Index 058**: Extremely narrow vertical structures (thin poles) are lost in the block matching process.
+**General Analysis of Failure Cases**:
+The highest errors observed in samples like 104, 006, and 058 can be attributed to several recurring technical challenges:
+
+- **Insufficient Illumination**: Low-light conditions and underexposed regions, particularly in shadows or during poor weather, lead to a low signal-to-noise ratio. This makes it difficult for the cost functions to find reliable correspondences, resulting in noisy depth maps.
+- **Textureless Regions**: The cost functions (SAD, SSD, NCC) are highly sensitive to regions lacking distinctive structural variation, such as the sky or smooth asphalt. In these areas, multiple matches produce near-identical costs, leading to noise-dominated depth as seen in the top failure cases.
+- **Occlusion and Boundary Errors**: Fixed-sized windows assume a constant depth for all pixels within the block. At object boundaries or in occluded regions (pixels visible in one camera but not the other), this assumption fails, leading to the "foreground fattening" effect and erroneous depth estimates.
 
 ### 5.2 Visual Odometry Failure Cases
 Sequences with the worst "Full" mode ATE:
