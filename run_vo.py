@@ -5,11 +5,14 @@ import matplotlib.pyplot as plt
 import csv
 from tqdm import tqdm
 from visual_odometry import VisualOdometry
+from visual_odometry_feature import VisualOdometryFeature
 from utils import load_vo_calib, load_poses, compute_ate, compute_rpe
 
 def main():
     # --- Configuration ---
     sequences = ['00', '01', '02', '03', '04', '05', '06', '07', '08', '09', '10']  # Example sequences to process
+    # sequences = ['03']
+
     vo_data_root = 'vo_data'
     output_dir = 'vo_results'
     csv_path = os.path.join(output_dir, 'vo_results.csv')
@@ -43,14 +46,12 @@ def main():
         img_r_dir = os.path.join(seq_dir, 'image_1')
         img_files = sorted(os.listdir(img_l_dir))
         
-        # Limit frames for faster execution in this master script if needed, 
-        # but the user asked for the "project" to have this structure.
-        # I'll process up to 500 frames per sequence to be reasonable.
-        num_frames = min(500, len(img_files))
+        # num_frames = min(500, len(img_files))
+        num_frames = len(img_files)
         
         for cfg in configs:
             print(f"  Running Case: {cfg['label']}")
-            vo = VisualOdometry(calib['P0'], calib['P1'])
+            vo = VisualOdometryFeature(calib['P0'], calib['P1'])
             estimated_poses = []
             
             inlier_images_saved = 0

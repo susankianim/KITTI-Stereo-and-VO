@@ -90,9 +90,9 @@ class VisualOdometryFeature:
         idx_prev = [m.queryIdx for m in matches]
         idx_curr = [m.trainIdx for m in matches]
         
-        pts_3d_prev = self.prev_3d[idx_prev]
+        pts_3d_prev = self.prev_3d[idx_prev] # type: ignore
         pts_2d_curr = np.array([kp_l[i].pt for i in idx_curr], dtype=np.float32)
-        pts_2d_prev = np.array([self.prev_kp[i].pt for i in idx_prev], dtype=np.float32)
+        pts_2d_prev = np.array([self.prev_kp[i].pt for i in idx_prev], dtype=np.float32) # type: ignore
         
         if len(pts_3d_prev) < 10:
             return self.current_pose, None
@@ -120,7 +120,7 @@ class VisualOdometryFeature:
                 flags=cv2.SOLVEPNP_ITERATIVE, confidence=0.999, reprojectionError=1.0
             )
             if success and inliers_pnp is not None:
-                inlier_mask = inliers_idx[inliers_pnp.flatten()]
+                inlier_mask = inliers_idx[inliers_pnp.flatten()] # type: ignore
         else:
             success, rvec, tvec = cv2.solvePnP(
                 pts_3d_prev, pts_2d_curr, K, dist_coeffs, flags=cv2.SOLVEPNP_ITERATIVE # type: ignore
